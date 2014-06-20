@@ -1,0 +1,161 @@
+Practical Machine Learing Course Project
+========================================================
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+```{r global_options, include=FALSE }
+opts_chunk$set( cache = TRUE )
+```
+
+# Data
+
+The training data for this project are available here: 
+
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv]
+
+The test data are available here: 
+
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv]
+
+# Analysis Summary
+1. Loading Data
+2. Create a training/testing partition for final error measure
+3. Pre-process data
+4. Fit the Random Forest model to the training set
+5. Measure out-of-sample error on testing data
+6. Apply it on 20 test cases for automatic grading
+
+# 0. Register libraries
+
+Use caret for machine learning algorithms
+```{r}
+library(caret)
+```
+
+Use doMC for parallel processing
+```{r}
+library(doMC)
+```
+
+Set the number of thread to 8
+```{r}
+registerDoMC(cores = 8)
+```
+
+
+# 1. Loading Data
+
+Load data to R
+```{r}
+data <- read.csv( "pml-training.csv" )
+str( data )
+```
+
+
+# 2. Create a training/testing partition for final error measure
+
+Create partitions by "classe", with ration training/testing = 60/40
+```{r}
+inTraining <- createDataPartition( y=data$classe, p=0.6, list=FALSE )
+training <- data[inTraining,]
+testing <- data[-inTraining,]
+```
+
+
+# 3. Pre-process data
+
+Remove columns with NA values
+```{r}
+training <-  training[ colSums( is.na( training ) ) == 0 ]
+```
+
+Remove columns with empty values
+```{r}
+training <- training[ colSums(training == "" ) == 0 ]
+```
+
+Remeve columns 1 to 7, since they seem don't help in classifying data
+```{r}
+training <- training[, -(1:7) ]
+```
+
+Number of predictors will be used in classifying
+```{r}
+dim( training )[2]
+```
+
+Final predictors will be used in classifying
+```{r}
+str( training )
+```
+
+
+# 4. Fit the Random Forest model to the training set
+
+Set the fit control. Evaluation will be 5-fold CV
+```{r}
+fitControl <- trainControl(## 5-fold CV
+    method = "cv",
+    number = 5,
+    ## repeated 1 time
+    repeats = 1)
+```
+
+Fit the training data to random forest model
+```{r fit}
+fit <- train( classe ~ ., method = "rf", trControl=fitControl, preProc = c("center", "scale"), data = training )
+```
+
+The errors estimated by CV
+```{r}
+show( fit$results )
+```
+
+
+# 5. Measure out-of-sample error on testing data
+
+Pre-process testing as training
+```{r}
+testing <- testing[ names( training ) ]
+```
+
+Apply the testing set to estimate out-of-sample error
+```{r}
+pred <- predict( fit, newdata = testing )
+confusionMatrix( pred, testing$classe )
+```
+
+
+# 6. Apply it on 20 test cases for automatic grading
+
+Load test data
+```{r}
+testData <- read.csv( "pml-testing.csv", header = TRUE )
+```
+
+Pre-process test data
+```{r}
+testData <- testData[ ,which( names( testData ) %in% names( training ) )]
+```
+
+Aplly fit model to predict classe for test data
+```{r}
+pred <- predict( fit, newdata = testData )
+```
+
+Create a function to write results
+```{r}
+pml_write_files = function(x){
+ n = length(x)
+ for(i in 1:n){
+   filename = paste0("problem_id_",i,".txt")
+   write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+ }
+}
+```
+
+Write results
+```{r}
+as.character( pred )
+pml_write_files( as.character( pred ) )
+```
